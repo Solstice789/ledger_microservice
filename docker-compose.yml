@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: glover_ledger_db
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: toor
+      POSTGRES_DB: ledger_microservice
+    ports:
+      - "5432:5432"
+    volumes:
+      - glover_ledger_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d ledger_microservice"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: glover_ledger_api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://root:toor@db:5432/ledger_microservice?schema=public
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+volumes:
+  glover_ledger_db_data:

@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client-js"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LedgerTransactionType {
+  CREDIT
+  DEBIT
+}
+
+model LedgerTransaction {
+  id            String                @id @default(uuid()) @db.Uuid
+  userId        String                @map("user_id") @db.Uuid
+  type          LedgerTransactionType
+  amountInCents Int                   @map("amount_in_cents")
+  itemId        String?               @map("item_id") @db.Uuid
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  @@index([userId], map: "idx_ledger_user_id")
+  @@index([userId, type], map: "idx_ledger_user_id_type")
+  @@map("ledger_transactions")
+}
