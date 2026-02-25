@@ -36,6 +36,8 @@ Run postgres server, expose port 5432, user:root, password:toor, db:ledger_micro
 Here is the docker command to spin up a working postgres server:
 docker run --name glover_ledger_db -e POSTGRES_USER=root -e POSTGRES_PASSWORD=toor -e POSTGRES_DB=ledger_microservice -p 5432:5432 -d postgres:alpine
 
+Rename .env.example to .env
+
 Run Prisma migrations:
 npx prisma migrate dev
 npx prisma generate
