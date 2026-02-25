@@ -59,6 +59,8 @@ Run Prisma migrations:
 
 ## Testing:
 
-http://localhost:3000/swagger-ui.html (curl commands can also be found for each endpoint here - execute the endpoint once to view the curl command)
+http://localhost:3000/swagger-ui.html - main endpoint for testing the service (curl commands can also be found for each endpoint here - execute the endpoint once to view the curl command)
+
+https://www.uuidgenerator.net/ - might come in handy if you want to generate a UUIDv4 for testing different users.
 
 Note: If you ran the optional seeding step, you will 5 total transactions (3 CREDIT & 2 DEBIT) in the DB from a single user (user_id = 856d9d7b-859a-4f92-b0f0-f3e89b5adf67) and a balance of 1500 cents.
