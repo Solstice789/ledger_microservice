@@ -1,98 +1,47 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+## Concurrency
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+To prevent race conditions (multiple concurrent purchases), all ledger write operations (credits/purchases) run inside a single PostgreSQL transaction.
+This transaction acquires a transaction-scoped advisory lock (hash of the x-user-id) and executed via the pg_advisory_xact_lock function.
+While holding the lock, the service calculates the current balance as SUM(amount_in_cents) from the ledger and only inserts the debit transaction if balance (cents) > item price (cents).
+This is handled on a per-user basis, preventing users' balances from going below zero under concurrent requests and allowing for balanced performance at scale.
+The lock is automatically released when the transaction commits/rolls back.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Price changes over time
 
-## Description
+Items are hardcoded in the codebase, but when creating a purchase (DEBIT) transaction the service stores a snapshot of the item at purchase time,
+via the item_id and amount_in_cents (the price of the item in that given time).
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Database indexes:
 
-## Project setup
+The following indexes were added:
+idx_ledger_user_id (user_id)
+idx_ledger_user_id_type (user_id, type)
 
-```bash
-$ npm install
-```
+Tradeoff: Indexes improve read performance for our balance & purchase APIs, but they increase write cost increase storage usage.
+The tradeoff(s) are worth it here because balance checks are frequent and could be costly at scale, in its current implementation.
 
-## Compile and run the project
+## Idempotency (design note)
+I would add a normalized idempotency_keys table with a unique constraint on (user_id, key).
+The purchase logic would run in a single DB transaction where it would:
+1.) First attempt to insert the (user_id, key) row.
+2.) If it succeeds, then proceed with the advisory lock, balance check, and ledger insert.
+3.) Finally store the final outcome (status code and optional response metadata) in the idempotency row.
+If the insert fails due to the unique constraint, the handler would look up the existing row and return the previously stored outcome without creating a second ledger transaction.
+I would also store a request_hash (e.g., hash of { itemId }) to prevent reusing the same key for a different payload (return 409/422 if the hash differs).
 
-```bash
-# development
-$ npm run start
+## Running the microservice
+How to run locally:
+Run postgres server, expose port 5432, user:root, password:toor, db:ledger_microservice, host:localhost
 
-# watch mode
-$ npm run start:dev
+Here is the docker command to spin up a working postgres server:
+docker run --name glover_ledger_db -e POSTGRES_USER=root -e POSTGRES_PASSWORD=toor -e POSTGRES_DB=ledger_microservice -p 5432:5432 -d postgres:alpine
 
-# production mode
-$ npm run start:prod
-```
+Run Prisma migrations:
+npx prisma migrate dev
+npx prisma generate
 
-## Run tests
+(Optional seed)
+npx prisma db seed
 
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+npm install
+npm run start:dev
