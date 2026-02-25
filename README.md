@@ -29,7 +29,7 @@ The purchase logic would run in a single DB transaction where it would:
 If the insert fails due to the unique constraint, the handler would look up the existing row and return the previously stored outcome without creating a second ledger transaction.
 I would also store a request_hash (e.g., hash of { itemId }) to prevent reusing the same key for a different payload (return 409/422 if the hash differs).
 
-## Running the microservice
+## Running
 How to run locally:
 Run postgres server, expose port 5432, user:root, password:toor, db:ledger_microservice, host:localhost
 
@@ -38,6 +38,8 @@ docker run --name glover_ledger_db -e POSTGRES_USER=root -e POSTGRES_PASSWORD=to
 
 Rename .env.example to .env
 
+npm install
+
 Run Prisma migrations:
 npx prisma migrate dev
 npx prisma generate
@@ -45,5 +47,9 @@ npx prisma generate
 (Optional seed)
 npx prisma db seed
 
-npm install
 npm run start:dev
+
+## Testing
+http://localhost:3000/swagger-ui.html
+
+If you ran the optional seeding step, you will have a user in the database (user_id = 856d9d7b-859a-4f92-b0f0-f3e89b5adf67) with 5 transactions total and a balance of 500 cents.
